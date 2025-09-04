@@ -931,10 +931,7 @@ def show_enhanced_calendar_view(df):
 
 def show_month_calendar(posts_df, month, year):
     """Enhanced month calendar view with fixed calendar import"""
-    import calendar as cal_module
-    
-    cal = cal_module.Calendar(firstweekday=0)  # Monday first
-    cal_matrix = cal.monthcalendar(year, month)  # Fixed parameter order
+    cal_matrix = calendar.monthcalendar(year, month)  # Use module directly
     
     # Group posts by day
     posts_by_day = {}
@@ -1002,7 +999,7 @@ def show_month_calendar(posts_df, month, year):
                     
                     # Show detailed posts in expander
                     if posts_today:
-                        with st.expander(f"📅 {len(posts_today)} post{'s' if len(posts_today) > 1 else ''} on {cal_module.month_name[month]} {day}"):
+                        with st.expander(f"📅 {len(posts_today)} post{'s' if len(posts_today) > 1 else ''} on {calendar.month_name[month]} {day}"):
                             for post in posts_today:
                                 hour = post.get('Hour', '')
                                 minute = int(post.get('Minute(0-59)', 0)) if post.get('Minute(0-59)', '') != '' else 0
