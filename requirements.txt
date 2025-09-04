@@ -1,5 +1,3 @@
 gspread
 oauth2client
 google-auth
-ogle-auth-oauthlib
-google-auth-httplib2
