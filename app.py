@@ -690,18 +690,43 @@ class UltimateSocialMediaManager:
             # Full message content
             st.markdown(f'<div class="post-content">{message}</div>', unsafe_allow_html=True)
             
-            # Links and media
-            link = self.safe_str_conversion(row.get('Link', ''))
-            if link:
-                st.markdown(f"🔗 [Link]({link})")
-            
-            image_url = self.safe_str_conversion(row.get('ImageURL', ''))
-            if image_url:
-                st.markdown(f"🖼️ [Image]({image_url})")
-            
-            video_url = self.safe_str_conversion(row.get('VideoURL', ''))
-            if video_url:
-                st.markdown(f"🎥 [Video]({video_url})")
+        # Links and media with live preview
+        link = manager.safe_str_conversion(post.get('Link', ''))
+        if link:
+            st.markdown(f"🔗 [Link]({link})")
+        
+        image_url = manager.safe_str_conversion(post.get('ImageURL', ''))
+        if image_url:
+            st.markdown(f"🖼️ **Image Preview:**")
+            try:
+                st.image(image_url, caption="Post Image", use_column_width=True)
+            except Exception as e:
+                st.markdown(f"🖼️ [Image Link]({image_url}) - *Preview failed: {str(e)}*")
+        
+        video_url = manager.safe_str_conversion(post.get('VideoURL', ''))
+        if video_url:
+            st.markdown(f"🎥 **Video Preview:**")
+            try:
+                # Check if it's a direct video file
+                if any(video_url.lower().endswith(ext) for ext in ['.mp4', '.mov', '.avi', '.mkv', '.webm']):
+                    st.video(video_url)
+                else:
+                    # For YouTube, Vimeo, etc., show as link
+                    st.markdown(f"🎥 [Video Link]({video_url})")
+                    # Try to extract video ID for YouTube embed
+                    if 'youtube.com' in video_url or 'youtu.be' in video_url:
+                        try:
+                            import re
+                            youtube_regex = r'(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)'
+                            match = re.search(youtube_regex, video_url)
+                            if match:
+                                video_id = match.group(1)
+                                embed_url = f"https://www.youtube.com/embed/{video_id}"
+                                st.markdown(f'<iframe width="100%" height="315" src="{embed_url}" frameborder="0" allowfullscreen></iframe>', unsafe_allow_html=True)
+                        except:
+                            pass
+            except Exception as e:
+                st.markdown(f"🎥 [Video Link]({video_url}) - *Preview failed: {str(e)}*")
             
             st.markdown('</div>', unsafe_allow_html=True)
         
@@ -2089,11 +2114,14 @@ def main():
             except Exception as e:
                 st.error(f"❌ Error: {str(e)}")
         
-        # Sheet URL
+        # Sheet URL - Hardcoded for convenience
+        if 'sheet_url' not in st.session_state:
+            st.session_state.sheet_url = "https://docs.google.com/spreadsheets/d/1NFVvhSeE5YrjRB4Q4vA5Ar7ohPFnQgzjkKdOGx1G0Wo/edit?usp=drivesdk"
+        
         sheet_url = st.text_input(
             "Google Sheets URL",
-            placeholder="https://docs.google.com/spreadsheets/d/...",
-            help="Paste your Google Sheets URL here"
+            value=st.session_state.sheet_url,
+            help="Your Google Sheets URL (pre-filled)"
         )
         
         if sheet_url:
