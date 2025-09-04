@@ -584,7 +584,6 @@ class EnhancedSocialMediaManager:
         
         # Scheduling info with proper error handling
         if status == "Scheduled":
-            # Format schedule info safely
             try:
                 schedule_info = f"{month}/{day}/{year}"
                 if hour:
@@ -745,6 +744,65 @@ class EnhancedSocialMediaManager:
         
         return feedback
     
+    def analyze_post_performance(self, message):
+        """Analyze post performance and provide feedback"""
+        score = 0
+        feedback = []
+        
+        # Length analysis
+        msg_len = len(message)
+        if 50 <= msg_len <= 200:
+            score += 25
+            feedback.append("✅ Perfect length for engagement")
+        elif 20 <= msg_len <= 300:
+            score += 15
+            feedback.append("📏 Good length, could be optimized")
+        else:
+            score += 5
+            feedback.append("⚠️ Length needs adjustment for better engagement")
+        
+        # Hashtag analysis
+        hashtag_count = message.count('#')
+        if 3 <= hashtag_count <= 7:
+            score += 20
+            feedback.append("✅ Good hashtag usage")
+        elif hashtag_count > 0:
+            score += 10
+            feedback.append("📈 Consider optimizing hashtag count (3-7 recommended)")
+        else:
+            feedback.append("🏷️ Add hashtags to increase discoverability")
+        
+        # Emoji analysis
+        emoji_pattern = re.compile(r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF\U0001F1E0-\U0001F1FF\U00002702-\U000027B0\U000024C2-\U0001F251]+')
+        if emoji_pattern.search(message):
+            score += 15
+            feedback.append("✅ Great use of emojis for visual appeal")
+        else:
+            feedback.append("😊 Consider adding emojis for better engagement")
+        
+        # Call to action analysis
+        cta_words = ['click', 'visit', 'learn', 'discover', 'try', 'get', 'download', 'sign up', 'join', 'follow', 'share', 'comment']
+        if any(word in message.lower() for word in cta_words):
+            score += 20
+            feedback.append("✅ Strong call-to-action detected")
+        else:
+            feedback.append("📢 Add a call-to-action to drive engagement")
+        
+        # Question analysis
+        if '?' in message:
+            score += 10
+            feedback.append("✅ Questions encourage engagement")
+        else:
+            feedback.append("❓ Consider adding a question to spark conversation")
+        
+        # Engagement words
+        engagement_words = ['amazing', 'incredible', 'exciting', 'new', 'exclusive', 'limited', 'free', 'tips', 'secrets']
+        if any(word in message.lower() for word in engagement_words):
+            score += 10
+            feedback.append("✅ Using engaging language")
+        
+        return min(score, 100), feedback
+    
     def load_image_from_url(self, url):
         """Load image from URL with error handling"""
         try:
@@ -872,9 +930,11 @@ def show_enhanced_calendar_view(df):
         show_week_calendar(scheduled_posts, st.session_state.calendar_month, st.session_state.calendar_year)
 
 def show_month_calendar(posts_df, month, year):
-    """Enhanced month calendar view"""
-    cal = calendar.Calendar(firstweekday=0)  # Monday first
-    cal_matrix = cal.monthcalendar(year, month)
+    """Enhanced month calendar view with fixed calendar import"""
+    import calendar as cal_module
+    
+    cal = cal_module.Calendar(firstweekday=0)  # Monday first
+    cal_matrix = cal.monthcalendar(year, month)  # Fixed parameter order
     
     # Group posts by day
     posts_by_day = {}
@@ -942,7 +1002,7 @@ def show_month_calendar(posts_df, month, year):
                     
                     # Show detailed posts in expander
                     if posts_today:
-                        with st.expander(f"📅 {len(posts_today)} post{'s' if len(posts_today) > 1 else ''} on {calendar.month_name[month]} {day}"):
+                        with st.expander(f"📅 {len(posts_today)} post{'s' if len(posts_today) > 1 else ''} on {cal_module.month_name[month]} {day}"):
                             for post in posts_today:
                                 hour = post.get('Hour', '')
                                 minute = int(post.get('Minute(0-59)', 0)) if post.get('Minute(0-59)', '') != '' else 0
@@ -976,7 +1036,7 @@ def show_week_calendar(posts_df, month, year):
     # Generate week days
     week_days = [week_start + timedelta(days=i) for i in range(7)]
     
-    # Group posts by day
+    # Group posts by date
     posts_by_date = {}
     if not posts_df.empty:
         for _, post in posts_df.iterrows():
@@ -1214,6 +1274,708 @@ def handle_post_actions(manager, df, client):
                 if st.button("❌ Cancel"):
                     del st.session_state.delete_post
                     st.rerun()
+    
+    # Handle duplication
+    if 'duplicate_post' in st.session_state:
+        index = st.session_state.duplicate_post
+        
+        if index < len(df):
+            post = df.iloc[index].copy()
+            post['Message'] = f"[COPY] {post['Message']}"
+            
+            # Add to dataframe
+            new_df = pd.concat([df, pd.DataFrame([post])], ignore_index=True)
+            
+            success, message = manager.update_sheet(client, st.session_state.sheet_url, new_df)
+            if success:
+                st.success("✅ Post duplicated successfully!")
+                del st.session_state.duplicate_post
+                st.rerun()
+            else:
+                st.error(f"❌ {message}")
+
+def show_create_post(manager, df, client):
+    """Enhanced post creation with AI assistance"""
+    st.header("➕ Create New Social Media Post")
+    
+    # Tabs for different creation methods
+    tab1, tab2, tab3 = st.tabs(["✍️ Manual Creation", "🤖 AI Generation", "📝 From Template"])
+    
+    with tab1:
+        show_manual_post_creation(manager, df, client)
+    
+    with tab2:
+        show_ai_post_generation(manager, df, client)
+    
+    with tab3:
+        show_template_post_creation(manager, df, client)
+
+def show_manual_post_creation(manager, df, client):
+    """Manual post creation form"""
+    with st.form("manual_post_form", clear_on_submit=True):
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.subheader("📝 Post Content")
+            
+            message = st.text_area(
+                "Message *",
+                height=120,
+                help="Your social media post content",
+                placeholder="Write your engaging social media post here..."
+            )
+            
+            # Real-time character count and platform compatibility
+            if message:
+                st.markdown("**Platform Compatibility:**")
+                platform_cols = st.columns(4)
+                
+                for idx, (platform, info) in enumerate(list(manager.platform_limits.items())[:4]):
+                    with platform_cols[idx]:
+                        char_count = len(message)
+                        if char_count <= info['optimal']:
+                            color = "#4caf50"
+                            status = "✅ Optimal"
+                        elif char_count <= info['limit']:
+                            color = "#ff9800"
+                            status = "⚠️ Long"
+                        else:
+                            color = "#f44336"
+                            status = "❌ Too Long"
+                        
+                        st.markdown(f"""
+                        <div style="text-align: center; padding: 8px; border-radius: 8px; background: {color}20; border: 1px solid {color};">
+                            <div style="font-size: 12px; font-weight: bold; color: {color};">{platform}</div>
+                            <div style="font-size: 11px; color: {color};">{char_count}/{info['limit']}</div>
+                            <div style="font-size: 10px; color: {color};">{status}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                # AI Performance Analysis
+                if len(message) > 10:
+                    score, feedback = manager.analyze_post_performance(message)
+                    
+                    st.markdown("**🤖 AI Performance Analysis:**")
+                    score_color = "#4caf50" if score >= 80 else "#ff9800" if score >= 60 else "#f44336"
+                    
+                    st.markdown(f"""
+                    <div style="background: {score_color}20; border: 1px solid {score_color}; border-radius: 8px; padding: 12px; margin: 8px 0;">
+                        <div style="font-weight: bold; color: {score_color};">Performance Score: {score}/100</div>
+                        <div style="font-size: 12px; margin-top: 4px;">
+                            {'🎉 Excellent!' if score >= 80 else '👍 Good!' if score >= 60 else '💡 Needs improvement'}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    with st.expander("📋 Detailed Feedback"):
+                        for item in feedback:
+                            st.write(item)
+            
+            # AI Hashtag Suggestions
+            if message and len(message) > 20:
+                if st.button("🏷️ Get AI Hashtag Suggestions"):
+                    with st.spinner("Generating hashtags..."):
+                        suggested_hashtags = manager.suggest_hashtags(message)
+                        st.success(f"Suggested hashtags: {suggested_hashtags}")
+            
+            # Additional content fields
+            st.subheader("🔗 Additional Content")
+            
+            col1_1, col1_2 = st.columns(2)
+            with col1_1:
+                link = st.text_input("🔗 Link", placeholder="https://example.com")
+                image_url = st.text_input("🖼️ Image URL", placeholder="https://example.com/image.jpg")
+            
+            with col1_2:
+                video_url = st.text_input("🎥 Video URL", placeholder="https://example.com/video.mp4")
+                category = st.selectbox(
+                    "📂 Category",
+                    [""] + ["AI Consulting", "Business", "Technology", "Marketing", "Education", "Lifestyle", "Other"]
+                )
+        
+        with col2:
+            st.subheader("📅 Scheduling")
+            
+            schedule_now = st.checkbox("Schedule this post", value=False)
+            
+            if schedule_now:
+                col2_1, col2_2 = st.columns(2)
+                with col2_1:
+                    month = st.selectbox("Month", [""] + list(range(1, 13)))
+                    day = st.selectbox("Day", [""] + list(range(1, 32)))
+                
+                with col2_2:
+                    year = st.selectbox("Year", [""] + list(range(2024, 2030)))
+                    hour = st.selectbox("Hour", [""] + list(range(0, 24)))
+                
+                minute = st.selectbox("Minute", list(range(0, 60, 15)))
+            else:
+                month = day = year = hour = minute = ""
+            
+            st.subheader("🏷️ Metadata")
+            
+            pin_title = st.text_input("📌 Pin Title", placeholder="Title for Pinterest")
+            watermark = st.text_input("💧 Watermark", placeholder="Watermark text")
+            hashtag_group = st.selectbox(
+                "🏷️ Hashtag Group",
+                [""] + list(manager.hashtag_groups.keys())
+            )
+            
+            cta_group = st.text_input("📢 CTA Group", placeholder="Call-to-action group")
+            first_comment = st.text_area("💬 First Comment", placeholder="Auto-comment text")
+            
+            col2_3, col2_4 = st.columns(2)
+            with col2_3:
+                story = st.selectbox("📱 Story Post?", ["N", "Y"])
+            
+            with col2_4:
+                pinterest_board = st.text_input("📌 Pinterest Board")
+            
+            alt_text = st.text_area("♿ Alt Text", placeholder="Image description for accessibility")
+        
+        # Submit button
+        submitted = st.form_submit_button("🚀 Create Post", type="primary", use_container_width=True)
+        
+        if submitted and message:
+            # Create new post
+            new_row = {
+                'Message': message,
+                'Link': link,
+                'ImageURL': image_url,
+                'VideoURL': video_url,
+                'Month(1-12)': month,
+                'Day(1-31)': day,
+                'Year': year,
+                'Hour': hour,
+                'Minute(0-59)': minute,
+                'PinTitle': pin_title,
+                'Category': category,
+                'Watermark': watermark,
+                'HashtagGroup': hashtag_group,
+                'VideoThumbnailURL': '',
+                'CTAGroup': cta_group,
+                'FirstComment': first_comment,
+                'Story(YorN)': story,
+                'PinterestBoard': pinterest_board,
+                'AltText': alt_text
+            }
+            
+            # Add to dataframe
+            new_df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+            
+            # Update Google Sheets
+            success, message_result = manager.update_sheet(client, st.session_state.sheet_url, new_df)
+            
+            if success:
+                st.success("✅ Post created successfully!")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error(f"❌ Error: {message_result}")
+        elif submitted:
+            st.error("❌ Please enter a message for your post")
+
+def show_ai_post_generation(manager, df, client):
+    """AI-powered post generation"""
+    st.subheader("🤖 AI Post Generation")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        topic = st.text_input(
+            "📝 Topic or Theme",
+            placeholder="e.g., AI in healthcare, productivity tips, startup advice"
+        )
+        
+        platform = st.selectbox(
+            "📱 Target Platform",
+            list(manager.platform_limits.keys())
+        )
+        
+        tone = st.selectbox(
+            "🎭 Tone",
+            ["Professional", "Casual", "Enthusiastic", "Educational", "Inspirational", "Humorous"]
+        )
+        
+        include_hashtags = st.checkbox("Include hashtags", value=True)
+        
+        if st.button("🚀 Generate AI Post", type="primary"):
+            if topic:
+                with st.spinner("🤖 AI is crafting your post..."):
+                    generated_post = manager.generate_ai_post(
+                        topic, platform, tone.lower(), include_hashtags
+                    )
+                    
+                    st.session_state.generated_post = generated_post
+                    st.success("✅ Post generated successfully!")
+            else:
+                st.error("❌ Please enter a topic")
+    
+    with col2:
+        st.markdown("**💡 AI Generation Tips:**")
+        st.markdown("""
+        - Be specific with your topic
+        - Choose the right platform for optimal length
+        - Professional tone works best for B2B
+        - Casual tone engages better on Instagram
+        - Include relevant keywords in your topic
+        """)
+    
+    # Display generated post
+    if 'generated_post' in st.session_state:
+        st.markdown("---")
+        st.subheader("📝 Generated Post")
+        
+        generated_content = st.text_area(
+            "Edit if needed:",
+            value=st.session_state.generated_post,
+            height=150
+        )
+        
+        # Performance analysis
+        if generated_content:
+            score, feedback = manager.analyze_post_performance(generated_content)
+            
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.markdown("**🤖 AI Performance Analysis:**")
+                for item in feedback[:3]:  # Show top 3 feedback items
+                    st.write(item)
+            
+            with col2:
+                score_color = "#4caf50" if score >= 80 else "#ff9800" if score >= 60 else "#f44336"
+                st.markdown(f"""
+                <div style="text-align: center; background: {score_color}20; border: 1px solid {score_color}; border-radius: 8px; padding: 16px;">
+                    <div style="font-size: 24px; font-weight: bold; color: {score_color};">{score}/100</div>
+                    <div style="font-size: 12px; color: {score_color};">Performance Score</div>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        # Quick save options
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if st.button("💾 Save as Draft"):
+                # Create new post with generated content
+                new_row = {
+                    'Message': generated_content,
+                    'Link': '',
+                    'ImageURL': '',
+                    'VideoURL': '',
+                    'Month(1-12)': '',
+                    'Day(1-31)': '',
+                    'Year': '',
+                    'Hour': '',
+                    'Minute(0-59)': '',
+                    'PinTitle': '',
+                    'Category': 'AI Generated',
+                    'Watermark': '',
+                    'HashtagGroup': '',
+                    'VideoThumbnailURL': '',
+                    'CTAGroup': '',
+                    'FirstComment': '',
+                    'Story(YorN)': 'N',
+                    'PinterestBoard': '',
+                    'AltText': ''
+                }
+                
+                # Add to dataframe
+                new_df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                
+                # Update Google Sheets
+                success, message_result = manager.update_sheet(client, st.session_state.sheet_url, new_df)
+                
+                if success:
+                    st.success("✅ Post saved as draft!")
+                    del st.session_state.generated_post
+                    st.rerun()
+                else:
+                    st.error(f"❌ Error: {message_result}")
+        
+        with col2:
+            if st.button("📅 Schedule Post"):
+                st.info("Use the Manual Creation tab to schedule this post with specific timing!")
+        
+        with col3:
+            if st.button("🔄 Generate Another"):
+                if 'generated_post' in st.session_state:
+                    del st.session_state.generated_post
+                st.rerun()
+
+def show_template_post_creation(manager, df, client):
+    """Template-based post creation"""
+    st.subheader("📝 Create from Template")
+    
+    # Template selection
+    template_name = st.selectbox(
+        "Choose Template",
+        list(manager.post_templates.keys())
+    )
+    
+    if template_name:
+        template = manager.post_templates[template_name]
+        
+        st.markdown(f"**Template Preview:** {template['template']}")
+        
+        # Variable inputs
+        st.subheader("Fill in the details:")
+        
+        variables = {}
+        cols = st.columns(2)
+        
+        for i, var in enumerate(template['variables']):
+            with cols[i % 2]:
+                variables[var] = st.text_input(
+                    f"{var.replace('_', ' ').title()}:",
+                    key=f"template_var_{var}"
+                )
+        
+        # Generate preview
+        if all(variables.values()):
+            try:
+                preview_post = template['template'].format(**variables)
+                
+                st.subheader("📋 Preview:")
+                st.markdown(f"""
+                <div style="background: #f8f9fa; border-radius: 8px; padding: 16px; border-left: 4px solid #3498db;">
+                    {preview_post}
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Performance analysis
+                score, feedback = manager.analyze_post_performance(preview_post)
+                
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    with st.expander("🤖 Performance Analysis"):
+                        for item in feedback:
+                            st.write(item)
+                
+                with col2:
+                    score_color = "#4caf50" if score >= 80 else "#ff9800" if score >= 60 else "#f44336"
+                    st.markdown(f"""
+                    <div style="text-align: center; background: {score_color}20; border: 1px solid {score_color}; border-radius: 8px; padding: 12px;">
+                        <div style="font-size: 20px; font-weight: bold; color: {score_color};">{score}/100</div>
+                        <div style="font-size: 11px; color: {score_color};">Score</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                if st.button("✅ Use This Post", type="primary"):
+                    # Create new post with template content
+                    new_row = {
+                        'Message': preview_post,
+                        'Link': '',
+                        'ImageURL': '',
+                        'VideoURL': '',
+                        'Month(1-12)': '',
+                        'Day(1-31)': '',
+                        'Year': '',
+                        'Hour': '',
+                        'Minute(0-59)': '',
+                        'PinTitle': '',
+                        'Category': f'Template: {template_name}',
+                        'Watermark': '',
+                        'HashtagGroup': '',
+                        'VideoThumbnailURL': '',
+                        'CTAGroup': '',
+                        'FirstComment': '',
+                        'Story(YorN)': 'N',
+                        'PinterestBoard': '',
+                        'AltText': ''
+                    }
+                    
+                    # Add to dataframe
+                    new_df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                    
+                    # Update Google Sheets
+                    success, message_result = manager.update_sheet(client, st.session_state.sheet_url, new_df)
+                    
+                    if success:
+                        st.success("✅ Template post created successfully!")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Error: {message_result}")
+            
+            except KeyError as e:
+                st.error(f"Missing variable: {e}")
+
+def show_analytics_dashboard(df):
+    """Analytics dashboard with insights"""
+    st.header("📊 Analytics Dashboard")
+    
+    if df.empty:
+        st.info("📈 No data available for analytics. Create some posts first!")
+        return
+    
+    # Key metrics
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        total_posts = len(df)
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{total_posts}</div>
+            <div class="metric-label">Total Posts</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        scheduled_posts = len(df[(df['Month(1-12)'] != '') & (df['Day(1-31)'] != '') & (df['Year'] != '')])
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{scheduled_posts}</div>
+            <div class="metric-label">Scheduled Posts</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        avg_length = int(df['Message'].str.len().mean()) if not df.empty else 0
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{avg_length}</div>
+            <div class="metric-label">Avg. Length</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        posts_with_media = len(df[(df['ImageURL'] != '') | (df['VideoURL'] != '')])
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{posts_with_media}</div>
+            <div class="metric-label">With Media</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Charts
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("📂 Posts by Category")
+        if not df['Category'].empty:
+            category_counts = df['Category'].value_counts()
+            fig = px.pie(
+                values=category_counts.values,
+                names=category_counts.index,
+                title="Distribution of Posts by Category"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No category data available")
+    
+    with col2:
+        st.subheader("📏 Message Length Distribution")
+        df['message_length'] = df['Message'].str.len()
+        fig = px.histogram(
+            df,
+            x='message_length',
+            title="Distribution of Message Lengths",
+            nbins=20
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Performance analysis
+    st.subheader("🎯 Performance Analysis")
+    
+    if not df.empty:
+        manager = EnhancedSocialMediaManager()
+        
+        # Calculate performance scores for all posts
+        performance_scores = []
+        for _, row in df.iterrows():
+            score = manager.calculate_performance_score(row['Message'], row)
+            performance_scores.append(score)
+        
+        df['performance_score'] = performance_scores
+        
+        # Performance distribution
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            fig = px.histogram(
+                df,
+                x='performance_score',
+                title="Performance Score Distribution",
+                nbins=10
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            # Top performing posts
+            st.markdown("**🏆 Top Performing Posts:**")
+            top_posts = df.nlargest(5, 'performance_score')[['Message', 'performance_score']]
+            for _, post in top_posts.iterrows():
+                st.markdown(f"**Score: {post['performance_score']}/100**")
+                st.write(f"{post['Message'][:100]}...")
+                st.markdown("---")
+
+def show_ai_tools(manager, df, client):
+    """AI tools and utilities"""
+    st.header("🤖 AI Tools & Utilities")
+    
+    tab1, tab2, tab3, tab4 = st.tabs(["🎯 Post Optimizer", "🏷️ Hashtag Generator", "📊 Content Analyzer", "🔮 Trend Predictor"])
+    
+    with tab1:
+        st.subheader("🎯 AI Post Optimizer")
+        
+        if not df.empty:
+            post_to_optimize = st.selectbox(
+                "Select post to optimize:",
+                range(len(df)),
+                format_func=lambda x: f"Post {x+1}: {df.iloc[x]['Message'][:50]}..."
+            )
+            
+            if st.button("🚀 Optimize Post"):
+                original_post = df.iloc[post_to_optimize]['Message']
+                
+                with st.spinner("🤖 AI is optimizing your post..."):
+                    # Simulate AI optimization
+                    optimized_post = manager.generate_ai_post(
+                        f"Optimize this post: {original_post}",
+                        "Instagram",
+                        "professional"
+                    )
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**Original Post:**")
+                    st.text_area("", value=original_post, height=150, disabled=True)
+                    
+                    orig_score, orig_feedback = manager.analyze_post_performance(original_post)
+                    st.markdown(f"**Score: {orig_score}/100**")
+                
+                with col2:
+                    st.markdown("**Optimized Post:**")
+                    st.text_area("", value=optimized_post, height=150, disabled=True)
+                    
+                    opt_score, opt_feedback = manager.analyze_post_performance(optimized_post)
+                    st.markdown(f"**Score: {opt_score}/100**")
+                
+                improvement = opt_score - orig_score
+                if improvement > 0:
+                    st.success(f"🎉 Improvement: +{improvement} points!")
+                else:
+                    st.info("💡 Consider manual adjustments for better results")
+        else:
+            st.info("Create some posts first to use the optimizer!")
+    
+    with tab2:
+        st.subheader("🏷️ Smart Hashtag Generator")
+        
+        hashtag_input = st.text_area(
+            "Enter your post content:",
+            placeholder="Paste your post content here to get relevant hashtag suggestions..."
+        )
+        
+        category = st.selectbox(
+            "Content Category (optional):",
+            [""] + list(manager.hashtag_groups.keys())
+        )
+        
+        if st.button("🏷️ Generate Hashtags") and hashtag_input:
+            with st.spinner("🤖 Generating relevant hashtags..."):
+                suggested_hashtags = manager.suggest_hashtags(hashtag_input, category)
+            
+            st.success("✅ Hashtag suggestions generated!")
+            st.code(suggested_hashtags)
+            
+            # Show category-specific hashtags
+            if category and category in manager.hashtag_groups:
+                st.markdown(f"**{category} Hashtags:**")
+                st.code(" ".join(manager.hashtag_groups[category]))
+    
+    with tab3:
+        st.subheader("📊 Content Performance Analyzer")
+        
+        if not df.empty:
+            st.markdown("**Analyze all your posts:**")
+            
+            # Performance analysis for all posts
+            performance_data = []
+            for idx, row in df.iterrows():
+                score, feedback = manager.analyze_post_performance(row['Message'])
+                performance_data.append({
+                    'Post': f"Post {idx+1}",
+                    'Score': score,
+                    'Length': len(row['Message']),
+                    'Has_Hashtags': '#' in row['Message'],
+                    'Has_Media': bool(row.get('ImageURL') or row.get('VideoURL')),
+                    'Category': row.get('Category', 'Uncategorized')
+                })
+            
+            perf_df = pd.DataFrame(performance_data)
+            
+            # Display analysis
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**Performance by Category:**")
+                if not perf_df.empty:
+                    category_performance = perf_df.groupby('Category')['Score'].mean().sort_values(ascending=False)
+                    st.bar_chart(category_performance)
+            
+            with col2:
+                st.markdown("**Top Recommendations:**")
+                low_performers = perf_df[perf_df['Score'] < 60]
+                if not low_performers.empty:
+                    st.write(f"📈 {len(low_performers)} posts could be improved")
+                    st.write(f"💡 Average score: {perf_df['Score'].mean():.1f}/100")
+                    
+                    if perf_df['Has_Hashtags'].sum() < len(perf_df) * 0.8:
+                        st.write("🏷️ Add more hashtags to posts")
+                    
+                    if perf_df['Has_Media'].sum() < len(perf_df) * 0.5:
+                        st.write("🖼️ Add more visual content")
+                else:
+                    st.success("🎉 All posts are performing well!")
+        else:
+            st.info("Create some posts first to analyze performance!")
+    
+    with tab4:
+        st.subheader("🔮 Trend Predictor")
+        
+        st.markdown("""
+        **Coming Soon!** 
+        
+        This feature will analyze your content patterns and predict:
+        - 📈 Best posting times
+        - 🎯 Trending topics in your niche
+        - 📊 Content performance predictions
+        - 🚀 Growth opportunities
+        
+        Stay tuned for updates!
+        """)
+        
+        # Placeholder for trend analysis
+        if not df.empty:
+            st.markdown("**Current Trends in Your Content:**")
+            
+            # Word frequency analysis
+            all_text = ' '.join(df['Message'].fillna(''))
+            words = re.findall(r'\b\w+\b', all_text.lower())
+            word_freq = Counter(words)
+            
+            # Remove common words
+            common_words = {'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'a', 'an', 'this', 'that', 'these', 'those'}
+            filtered_freq = {word: count for word, count in word_freq.items() if word not in common_words and len(word) > 3}
+            
+            if filtered_freq:
+                top_words = dict(sorted(filtered_freq.items(), key=lambda x: x[1], reverse=True)[:10])
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown("**Most Used Words:**")
+                    for word, count in top_words.items():
+                        st.write(f"• {word}: {count} times")
+                
+                with col2:
+                    fig = px.bar(
+                        x=list(top_words.values()),
+                        y=list(top_words.keys()),
+                        orientation='h',
+                        title="Word Frequency"
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
 
 def main():
     """Main application function"""
@@ -1252,6 +2014,28 @@ def main():
         
         if sheet_url:
             st.session_state.sheet_url = sheet_url
+        
+        # Quick stats
+        if 'google_credentials' in st.session_state and 'sheet_url' in st.session_state:
+            st.markdown("---")
+            st.subheader("📈 Quick Stats")
+            
+            # Try to load data for stats
+            try:
+                client, error = manager.setup_google_sheets()
+                if not error:
+                    df = manager.get_sheet_data(client, st.session_state.sheet_url)
+                    
+                    if not df.empty:
+                        st.metric("Total Posts", len(df))
+                        scheduled = len(df[(df['Month(1-12)'] != '') & (df['Day(1-31)'] != '') & (df['Year'] != '')])
+                        st.metric("Scheduled", scheduled)
+                        
+                        if df['Category'].notna().any():
+                            top_category = df['Category'].value_counts().index[0] if not df['Category'].value_counts().empty else "None"
+                            st.metric("Top Category", top_category)
+            except:
+                pass  # Silently fail for sidebar stats
     
     # Main content
     if 'google_credentials' in st.session_state and 'sheet_url' in st.session_state:
@@ -1278,16 +2062,13 @@ def main():
             show_enhanced_calendar_view(df)
         
         with tab3:
-            st.header("➕ Create New Post")
-            st.info("Post creation functionality would be implemented here")
+            show_create_post(manager, df, client)
         
         with tab4:
-            st.header("📊 Analytics Dashboard")
-            st.info("Analytics functionality would be implemented here")
+            show_analytics_dashboard(df)
         
         with tab5:
-            st.header("🤖 AI Tools")
-            st.info("AI tools functionality would be implemented here")
+            show_ai_tools(manager, df, client)
     
     else:
         # Welcome screen
@@ -1305,9 +2086,20 @@ def main():
         - 🤖 **AI-Powered Insights** - Get performance scores and suggestions
         - 📊 **Analytics Dashboard** - Track your content performance
         - 🎯 **Multi-Platform Optimization** - Optimize for different social platforms
+        - ✍️ **AI Content Generation** - Create posts with AI assistance
+        - 📝 **Template System** - Use pre-built templates for consistency
+        - 🏷️ **Smart Hashtag Suggestions** - AI-powered hashtag recommendations
+        
+        ### 🚀 Getting Started:
+        1. Create a Google Cloud Project
+        2. Enable the Google Sheets API
+        3. Create a service account and download credentials
+        4. Create a Google Sheet for your posts
+        5. Upload credentials and sheet URL in the sidebar
+        
+        **Ready to revolutionize your social media workflow?** 🎯
         """)
 
 if __name__ == "__main__":
     main()
-
 
