@@ -280,7 +280,7 @@ def main():
         # Google Sheets URL
         sheet_url = st.text_input(
             "Google Sheets URL",
-            placeholder="https://docs.google.com/spreadsheets/d/...",
+            placeholder="https://docs.google.com/spreadsheets/d/1ZMMpBOqN0YOzOEb27svNBOuib6xq2SG8jpkzaRweXk4/edit?gid=1303278879#gid=1303278879",
             help="Paste your Google Sheets URL here"
         )
         
