@@ -280,7 +280,7 @@ def main():
         # Google Sheets URL
         sheet_url = st.text_input(
             "Google Sheets URL",
-            placeholder="https://docs.google.com/spreadsheets/d/1ZMMpBOqN0YOzOEb27svNBOuib6xq2SG8jpkzaRweXk4/edit?gid=1303278879#gid=1303278879",
+            placeholder="https://docs.google.com/spreadsheets/d/...",
             help="Paste your Google Sheets URL here"
         )
         
@@ -296,6 +296,35 @@ def main():
     # Main content area
     if 'google_credentials' not in st.session_state:
         st.warning("⚠️ Please upload your Google service account credentials in the sidebar")
+        
+        # Show setup instructions
+        with st.expander("📋 Setup Instructions"):
+            st.markdown("""
+            ### Google Sheets API Setup:
+            
+            1. **Go to [Google Cloud Console](https://console.cloud.google.com/)**
+            2. **Create a new project** or select existing one
+            3. **Enable Google Sheets API**:
+               - Go to "APIs & Services" > "Library"
+               - Search for "Google Sheets API"
+               - Click "Enable"
+            4. **Create Service Account**:
+               - Go to "APIs & Services" > "Credentials"
+               - Click "Create Credentials" > "Service Account"
+               - Fill in the details and create
+            5. **Download JSON Key**:
+               - Click on your service account
+               - Go to "Keys" tab
+               - Click "Add Key" > "Create new key" > "JSON"
+               - Download the JSON file
+            6. **Share your Google Sheet**:
+               - Open your Google Sheet
+               - Click "Share" button
+               - Add your service account email (found in the JSON file)
+               - Give "Editor" permissions
+            
+            ### Your Sheet URL is already pre-filled!
+            """)
         return
     
     if 'sheet_url' not in st.session_state:
